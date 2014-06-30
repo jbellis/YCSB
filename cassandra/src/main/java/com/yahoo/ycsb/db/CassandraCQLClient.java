@@ -24,6 +24,8 @@ import com.datastax.driver.core.querybuilder.Select;
 import com.yahoo.ycsb.*;
 import java.nio.ByteBuffer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
@@ -78,6 +80,10 @@ public class CassandraCQLClient extends DB {
     private static final AtomicInteger initCount = new AtomicInteger(0);
 
     private static boolean _debug = false;
+    private static final Map<String, PreparedStatement> deleteStatementes = new HashMap<String, PreparedStatement>();
+    private static final Map<String, PreparedStatement> insertStatementes = new HashMap<String, PreparedStatement>();
+    private static final Map<String, PreparedStatement> selectStatementes = new HashMap<String, PreparedStatement>();
+    private PreparedStatement scanStatemente = null;
 
     /**
      * Initialize any state for this DB. Called once per DB instance; there is
@@ -166,7 +172,6 @@ public class CassandraCQLClient extends DB {
     @Override
     public void cleanup() throws DBException {
         if (initCount.decrementAndGet() <= 0) {
-            cluster.close();
         }
     }
 
@@ -184,9 +189,9 @@ public class CassandraCQLClient extends DB {
     public int read(String table, String key, Set<String> fields, HashMap<String, ByteIterator> result) {
 
         try {
-            Statement stmt;
-            Select.Builder selectBuilder;
 
+            // Build select query
+            Select.Builder selectBuilder;
             if (fields == null) {
                 selectBuilder = QueryBuilder.select().all();
             }
@@ -196,15 +201,21 @@ public class CassandraCQLClient extends DB {
                     ((Select.Selection) selectBuilder).column(col);
                 }
             }
+            String queryString = selectBuilder.from(table).where(QueryBuilder.eq(YCSB_KEY, QueryBuilder.bindMarker())).limit(1).getQueryString();
 
-            stmt = selectBuilder.from(table).where(QueryBuilder.eq(YCSB_KEY, key)).limit(1);
-            stmt.setConsistencyLevel(readConsistencyLevel);
-
-            if (_debug) {
-                System.out.println(stmt.toString());
+            // Prepare and cache the read statement
+            PreparedStatement ps = selectStatementes.get(queryString);
+            if (ps == null) {
+                ps = session.prepare(queryString);
+                ps.setConsistencyLevel(readConsistencyLevel);
+                selectStatementes.put(queryString, ps);
             }
 
-            ResultSet rs = session.execute(stmt);
+            if (_debug) {
+                System.out.println(queryString);
+            }
+
+            ResultSet rs = session.execute(ps.bind(key));
 
             //Should be only 1 row
             if (!rs.isExhausted()) {
@@ -276,20 +287,22 @@ public class CassandraCQLClient extends DB {
             scanStmt.append(" WHERE ");
             scanStmt.append(QueryBuilder.token(YCSB_KEY));
             scanStmt.append(" >= ");
-            scanStmt.append("token('");
-            scanStmt.append(startkey);
-            scanStmt.append("')");
+            scanStmt.append("token(");
+            scanStmt.append(QueryBuilder.bindMarker());
+            scanStmt.append(")");
             scanStmt.append(" LIMIT ");
-            scanStmt.append(recordcount);
+            scanStmt.append(QueryBuilder.bindMarker());
 
-            stmt = new SimpleStatement(scanStmt.toString());
-            stmt.setConsistencyLevel(readConsistencyLevel);
-
-            if (_debug) {
-                System.out.println(stmt.toString());
+            if (scanStatemente == null) {
+                scanStatemente = session.prepare(scanStmt.toString());
+                scanStatemente.setConsistencyLevel(readConsistencyLevel);
             }
 
-            ResultSet rs = session.execute(stmt);
+            ResultSet rs = session.execute(scanStatemente.bind(startkey, recordcount));
+
+            if (_debug) {
+                System.out.println(scanStatemente.getQueryString());
+            }
 
             HashMap<String, ByteIterator> tuple;
             while (!rs.isExhausted()) {
@@ -352,27 +365,31 @@ public class CassandraCQLClient extends DB {
     public int insert(String table, String key, HashMap<String, ByteIterator> values) {
 
         try {
-            Insert insertStmt = QueryBuilder.insertInto(table);
 
-            //Add key
-            insertStmt.value(YCSB_KEY, key);
+            List<String> statementValues = new ArrayList<String>(values.size() + 1);
+            statementValues.add(key);
 
-            //Add fields
-            for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
-                Object value;
-                ByteIterator byteIterator = entry.getValue();
-                value = byteIterator.toString();
-
-                insertStmt.value(entry.getKey(), value);
+            // Build query
+            Insert qb = QueryBuilder.insertInto(table).value(YCSB_KEY, QueryBuilder.bindMarker());
+            for (Map.Entry<String, ByteIterator> entry : values.entrySet())
+            {
+                statementValues.add(entry.getValue().toString());
+                qb.value(entry.getKey(), QueryBuilder.bindMarker());
             }
-
-            insertStmt.setConsistencyLevel(writeConsistencyLevel);
 
             if (_debug) {
-                System.out.println(insertStmt.toString());
+                System.out.println(qb.getQueryString());
             }
 
-            session.execute(insertStmt);
+            // Prepare and cache the insert statement
+            PreparedStatement ps = insertStatementes.get(qb.getQueryString());
+            if (ps == null) {
+                ps = session.prepare(qb);
+                ps.setConsistencyLevel(writeConsistencyLevel);
+                insertStatementes.put(qb.getQueryString(), ps);
+            }
+
+            session.execute(ps.bind(statementValues.toArray()));
 
             return OK;
         } catch (Exception e) {
@@ -393,16 +410,23 @@ public class CassandraCQLClient extends DB {
     public int delete(String table, String key) {
 
         try {
-            Statement stmt;
 
-            stmt = QueryBuilder.delete().from(table).where(QueryBuilder.eq(YCSB_KEY, key));
-            stmt.setConsistencyLevel(writeConsistencyLevel);
+            // Build delete query
+            String queryString = QueryBuilder.delete().from(table).where(QueryBuilder.eq(YCSB_KEY, QueryBuilder.bindMarker())).getQueryString();
 
             if (_debug) {
-                System.out.println(stmt.toString());
+                System.out.println(queryString);
             }
 
-            session.execute(stmt);
+            // Prepare and cache delete query
+            PreparedStatement ps = deleteStatementes.get(queryString);
+            if (ps == null) {
+                ps = session.prepare(queryString);
+                ps.setConsistencyLevel(writeConsistencyLevel);
+                deleteStatementes.put(queryString, ps);
+            }
+
+            session.execute(ps.bind(key));
 
             return OK;
         } catch (Exception e) {
