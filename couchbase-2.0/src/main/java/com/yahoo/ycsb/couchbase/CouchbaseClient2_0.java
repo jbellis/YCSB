@@ -149,10 +149,9 @@ public class CouchbaseClient2_0 extends MemcachedCompatibleClient {
         try {
             OperationFuture<Boolean> future;
             if (persistTo == null && replicateTo == null) {
-                future = couchbaseClient.add(key, objectExpirationTime, toJson(values));
+                future = couchbaseClient.set(key, objectExpirationTime, toJson(values));
             } else {
-                future = couchbaseClient.add(key, objectExpirationTime, toJson(values),
-                    persistTo, replicateTo);
+                future = couchbaseClient.set(key, objectExpirationTime, toJson(values), persistTo, replicateTo);
             }
             return getReturnCode(future);
         } catch (Exception e) {
