@@ -83,7 +83,7 @@ public class MongoDbClient extends DB {
         Properties props = getProperties();
         String url = props.getProperty("mongodb.url", "mongodb://localhost:27017");
         database = props.getProperty("mongodb.database", "ycsb");
-        String writeConcernValue = props.getProperty("mongodb.writeConcern", "FSYNC_SAFE").toUpperCase();
+        String writeConcernValue = props.getProperty("mongodb.writeConcern", "JOURNALED").toUpperCase();
         String readPreferenceValue = props.getProperty("mongodb.readPreference", "NEAREST").toUpperCase();
 
         if (writeConcernValue.equals("CUSTOM")) {
