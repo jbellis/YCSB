@@ -1,5 +1,7 @@
 Yahoo! Cloud System Benchmark (YCSB)
 ====================================
+This organiztion and fork of YCSB is setup to allow interested parties to keep the YCSB benchmark updated as it is observed that the original repository (https://github.com/brianfrankcooper/YCSB) is not actively maintained. The starting point for this repository is a fork created by jbellis, which contains many fixes to the original.
+Vendors who wish to join the organization should submit an issue, to keep noise to a minimum it is suggested that one developer per vendor is picked as representative.
 
 A note on comparing multiple systems
 ------------------------------------
@@ -17,7 +19,6 @@ Cassandra requires a configuration change in conf/cassandra.yaml.  Uncomment the
 
 Links
 -----
-http://wiki.github.com/jbellis/YCSB/  
 http://research.yahoo.com/Web_Information_Management/YCSB/  
 ycsb-users@yahoogroups.com  
 
