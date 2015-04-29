@@ -66,6 +66,7 @@
     <!--<module>dynamodb</module>-->
     <module>jdbc</module>
     <module>memcached</module>
+    <!--<module>mapkeeper</module>-->
     <module>mongodb</module>
     <module>distribution</module>
   </modules>
