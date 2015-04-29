@@ -1,20 +1,19 @@
 /**
- * Copyright (c) 2010 Yahoo! Inc. All rights reserved.                                                                                                                             
+ * Copyright (c) 2010 Yahoo! Inc. All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you                                                                                                             
- * may not use this file except in compliance with the License. You                                                                                                                
- * may obtain a copy of the License at                                                                                                                                             
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0                                                                                                                                      
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software                                                                                                             
- * distributed under the License is distributed on an "AS IS" BASIS,                                                                                                               
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or                                                                                                                 
- * implied. See the License for the specific language governing                                                                                                                    
- * permissions and limitations under the License. See accompanying                                                                                                                 
- * LICENSE file.                                                                                                                                                                   
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License. See accompanying
+ * LICENSE file.
  */
-
 package com.yahoo.ycsb;
 
 
@@ -29,10 +28,12 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.Properties;
 import java.util.Vector;
-
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * A thread to periodically show the status of the experiment, to reassure you that progress is being made.
@@ -47,75 +48,74 @@ class StatusThread extends Thread {
     /**
      * The interval for reporting status.
      */
-    public static final long sleeptime = 2000;
+    long _sleeptimeNs;
 
-    public StatusThread(Vector<Thread> threads, String label, boolean standardstatus) {
-        _threads = threads;
-        _label = label;
-        _standardstatus = standardstatus;
+    public StatusThread(Vector<Thread> threads, String label, boolean standardstatus, int statusIntervalSeconds) {
+        _threads=threads;
+        _label=label;
+        _standardstatus=standardstatus;
+        _sleeptimeNs=TimeUnit.SECONDS.toNanos(statusIntervalSeconds);
     }
 
     /**
      * Run and periodically report status.
      */
     public void run() {
-        long st = System.currentTimeMillis();
+        long st=System.currentTimeMillis();
 
-        long lasten = st;
-        long lasttotalops = 0;
+        final long startTimeNanos = System.nanoTime();
+        long deadline = startTimeNanos + _sleeptimeNs;
+
+        long lasten=st;
+        long lasttotalops=0;
 
         boolean alldone;
         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SSS");
 
         do {
-            alldone = true;
+            alldone=true;
 
-            int totalops = 0;
+            int totalops=0;
 
             //terminate this thread when all the worker threads are done
             for (Thread t : _threads) {
                 if (t.getState() != Thread.State.TERMINATED) {
-                    alldone = false;
+                    alldone=false;
                 }
 
-                ClientThread ct = (ClientThread) t;
+                ClientThread ct=(ClientThread)t;
                 totalops += ct.getOpsDone();
             }
 
-            long en = System.currentTimeMillis();
+            long en=System.currentTimeMillis();
 
-            long interval = en - st;
+            long interval=en-st;
             //double throughput=1000.0*((double)totalops)/((double)interval);
 
-            double curthroughput = 1000.0 * (((double) (totalops - lasttotalops)) / ((double) (en - lasten)));
+            double curthroughput=1000.0*(((double)(totalops-lasttotalops))/((double)(en-lasten)));
 
-            lasttotalops = totalops;
-            lasten = en;
+            lasttotalops=totalops;
+            lasten=en;
 
             DecimalFormat d = new DecimalFormat("#.##");
+            String label = _label + format.format(new Date());
 
             if (totalops == 0) {
-                System.err.println(_label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + Measurements.getMeasurements().getSummary());
+                System.err.println(label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + Measurements.getMeasurements().getSummary());
             } else {
-                System.err.println(_label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + d.format(curthroughput) + " current ops/sec; " + Measurements.getMeasurements().getSummary());
+                System.err.println(label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + d.format(curthroughput) + " current ops/sec; " + Measurements.getMeasurements().getSummary());
             }
 
             if (_standardstatus) {
                 if (totalops == 0) {
-                    System.out.println(_label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + Measurements.getMeasurements().getSummary());
+                    System.out.println(label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + Measurements.getMeasurements().getSummary());
                 } else {
-                    System.out.println(_label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + d.format(curthroughput) + " current ops/sec; " + Measurements.getMeasurements().getSummary());
+                    System.out.println(label + " " + (interval / 1000) + " sec: " + totalops + " operations; " + d.format(curthroughput) + " current ops/sec; " + Measurements.getMeasurements().getSummary());
                 }
             }
-
-            try {
-                sleep(sleeptime);
-            } catch (InterruptedException e) {
-                //do nothing
-            }
-
-        }
-        while (!alldone);
+            ClientThread.sleepUntil(deadline);
+            deadline+=_sleeptimeNs;
+        } while (!alldone);
     }
 }
 
@@ -198,6 +198,7 @@ interface OperationHandler {
     boolean doOperation(DB _db, Object _workloadstate);
 }
 
+
 class WarmupThread extends ClientThread {
 
     long exectime;
@@ -257,17 +258,20 @@ class WarmupThread extends ClientThread {
  * A thread for exporting statistics to the file in runtime.
  */
 class ClientThread extends Thread {
+    private static boolean _spinSleep;
     DB _db;
     boolean _dotransactions;
     Workload _workload;
     int _opcount;
-    double _target;
+    double _targetOpsPerMs;
     double reconnectionthroughput;
     long reconncetiontime;
 
     int _opsdone;
     Object _workloadstate;
     Properties _props;
+    long _targetOpsTickNs;
+    final Measurements _measurements;
 
     long reconnectioncounter;
     long runtime;
@@ -282,21 +286,26 @@ class ClientThread extends Thread {
     /**
      * Constructor.
      *
-     * @param db                   the DB implementation to use
-     * @param dotransactions       true to do transactions, false to insert data
-     * @param workload             the workload to use
-     * @param props                the properties defining the experiment
-     * @param opcount              the number of operations (transactions or inserts) to do
+     * @param db the DB implementation to use
+     * @param dotransactions true to do transactions, false to insert data
+     * @param workload the workload to use
+     * @param props the properties defining the experiment
+     * @param opcount the number of operations (transactions or inserts) to do
      * @param targetperthreadperms target number of operations per thread per ms
      */
     public ClientThread(DB db, boolean dotransactions, Workload workload, Properties props, int opcount, double targetperthreadperms) {
-        _db = db;
-        _dotransactions = dotransactions;
-        _workload = workload;
-        _opcount = opcount;
-        _opsdone = 0;
-        _target = targetperthreadperms;
-        _props = props;
+        _db=db;
+        _dotransactions=dotransactions;
+        _workload=workload;
+        _opcount=opcount;
+        _opsdone=0;
+        if(targetperthreadperms > 0){
+        _targetOpsPerMs=targetperthreadperms;
+        _targetOpsTickNs=(long)(1000000/_targetOpsPerMs);
+        }
+        _props=props;
+        _measurements = Measurements.getMeasurements();
+        _spinSleep = Boolean.valueOf(_props.getProperty("spin.sleep", "false"));
         reconnectioncounter = 0;
         this.reconnectionthroughput = Double.parseDouble(props.getProperty(RECONNECTION_THROUGHTPUT_PROPERTY, RECONNECTION_THROUGHTPUT_DEFAULT)) / 1000.0;
         this.reconncetiontime = Long.parseLong(props.getProperty(RECONNECTION_TIME_PROPERTY, RECONNECTION_TIME_DEFAULT));
@@ -330,15 +339,16 @@ class ClientThread extends Thread {
             return;
         }
 
+        //NOTE: Switching to using nanoTime and parkNanos for time management here such that the measurements
+        // and the client thread have the same view on time.
+
         //spread the thread operations out so they don't all hit the DB at the same time
-        try {
-            //GH issue 4 - throws exception if _target>1 because random.nextInt argument must be >0
-            //and the sleep() doesn't make sense for granularities < 1 ms anyway
-            if ((_target > 0) && (_target <= 1.0)) {
-                sleep(Utils.random().nextInt((int) (1.0 / _target)));
-            }
-        } catch (InterruptedException e) {
-            // do nothing.
+        // GH issue 4 - throws exception if _target>1 because random.nextInt argument must be >0
+        // and the sleep() doesn't make sense for granularities < 1 ms anyway
+        if ((_targetOpsPerMs > 0) && (_targetOpsPerMs <= 1.0))
+        {
+            long randomMinorDelay = Utils.random().nextInt((int) _targetOpsTickNs);
+            sleepUntil(System.nanoTime() + randomMinorDelay);
         }
 
         try {
@@ -357,21 +367,22 @@ class ClientThread extends Thread {
                     }
                 });
             }
-
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         try {
+            // no expected time for cleanup
+            _measurements.setIntendedStartTimeNs(0);
             _db.cleanup();
         } catch (DBException e) {
             e.printStackTrace();
         }
     }
-
     protected void run(OperationHandler handler) {
+        final long startTimeNs = System.nanoTime();
         boolean isStartReconnectionTimer = true;
-        long start_time = System.currentTimeMillis();
+        final long start_time = System.currentTimeMillis();
         long interval_time = start_time;
         long reconnection_throughput_time = 0;
         long interval_ops = 0;
@@ -409,50 +420,55 @@ class ClientThread extends Thread {
             interval_ops++;
             _opsdone++;
 
-            //throttle the operations
-            if (_target > 0) {
-                //this is more accurate than other throttling approaches we have tried,
-                //like sleeping for (1/target throughput)-operation latency,
-                //because it smooths timing inaccuracies (from sleep() taking an int,
-                //current time in millis) over many operations
-                //while (System.currentTimeMillis() - interval_time < (interval_ops / _target)) {
-                while (_target < interval_ops / ((double) System.currentTimeMillis() - interval_time)) {
-                    try {
-                        sleep(1);
-                    } catch (InterruptedException e) {
-                        // do nothing.
-                    }
-                }
-            }
+            throttleNanos(startTimeNs);
             runtime = System.currentTimeMillis() - start_time;
         }
     }
-}
 
+    static void sleepUntil(long deadline) {
+        long now = System.nanoTime();
+        while((now = System.nanoTime()) < deadline) {
+            if (!_spinSleep) {
+                LockSupport.parkNanos(deadline - now);
+            }
+        }
+    }
+    private void throttleNanos(long startTimeNanos) {
+        //throttle the operations
+        if (_targetOpsPerMs > 0)
+        {
+            // delay until next tick
+            long deadline = startTimeNanos + _opsdone*_targetOpsTickNs;
+            sleepUntil(deadline);
+            _measurements.setIntendedStartTimeNs(deadline);
+        }
+    }
+
+}
 
 /**
  * Main class for executing YCSB.
  */
 public class Client {
-
-    public static final String OPERATION_COUNT_PROPERTY = "operationcount";
+    public static final String OPERATION_COUNT_PROPERTY="operationcount";
     public static final String WARMUP_OPERATION_COUNT_PROPERTY = "warmupoperationcount";
     public static final String WARMUP_EXECUTION_TIME = "warmupexecutiontime";
     public static final String EXPORT_MEASUREMENTS_INTERVAL = "exportmeasurementsinterval";
-    public static final String RECORD_COUNT_PROPERTY = "recordcount";
-    public static final String WORKLOAD_PROPERTY = "workload";
+    public static final String RECORD_COUNT_PROPERTY="recordcount";
+    public static final String RECORD_COUNT_DEFAULT = "0";
+    public static final String WORKLOAD_PROPERTY="workload";
 
     /**
      * Indicates how many inserts to do, if less than recordcount. Useful for partitioning
      * the load among multiple servers, if the client is the bottleneck. Additionally, workloads
      * should support the "insertstart" property, which tells them which record to start at.
      */
-    public static final String INSERT_COUNT_PROPERTY = "insertcount";
+    public static final String INSERT_COUNT_PROPERTY="insertcount";
 
     /**
-     * The maximum amount of time (in seconds) for which the benchmark will be run.
-     */
-    public static final String MAX_EXECUTION_TIME = "maxexecutiontime";
+   * The maximum amount of time (in seconds) for which the benchmark will be run.
+   */
+  public static final String MAX_EXECUTION_TIME = "maxexecutiontime";
 
     public static void usageMessage() {
         System.out.println("Usage: java com.yahoo.ycsb.Client [options]");
@@ -474,7 +490,7 @@ public class Client {
         System.out.println("  -l label:  use label for status (e.g. to label one experiment out of a whole batch)");
         System.out.println("");
         System.out.println("Required properties:");
-        System.out.println("  " + WORKLOAD_PROPERTY + ": the name of the workload class to use (e.g. com.yahoo.ycsb.workloads.CoreWorkload)");
+        System.out.println("  "+WORKLOAD_PROPERTY+": the name of the workload class to use (e.g. com.yahoo.ycsb.workloads.CoreWorkload)");
         System.out.println("");
         System.out.println("To run the transaction phase from multiple servers, start a separate client on each.");
         System.out.println("To run the load phase from multiple servers, start a separate client on each; additionally,");
@@ -509,19 +525,19 @@ public class Client {
         return exporter;
     }
 
-    @SuppressWarnings("unchecked")
+
     public static void main(String[] args) throws FileNotFoundException {
         String dbname;
-        Properties props = new Properties();
-        Properties fileprops = new Properties();
-        boolean dotransactions = true;
-        int threadcount = 1;
-        int target = 0;
-        boolean status = false;
-        String label = "";
+        Properties props=new Properties();
+        Properties fileprops=new Properties();
+        boolean dotransactions=true;
+        int threadcount=1;
+        int target=0;
+        boolean status=false;
+        String label="";
 
         //parse arguments
-        int argindex = 0;
+        int argindex=0;
 
         if (args.length == 0) {
             usageMessage();
@@ -535,8 +551,8 @@ public class Client {
                     usageMessage();
                     System.exit(0);
                 }
-                int tcount = Integer.parseInt(args[argindex]);
-                props.setProperty("threadcount", tcount + "");
+                int tcount=Integer.parseInt(args[argindex]);
+                props.setProperty("threadcount", tcount+"");
                 argindex++;
             } else if (args[argindex].compareTo("-target") == 0) {
                 argindex++;
@@ -544,17 +560,17 @@ public class Client {
                     usageMessage();
                     System.exit(0);
                 }
-                int ttarget = Integer.parseInt(args[argindex]);
-                props.setProperty("target", ttarget + "");
+                int ttarget=Integer.parseInt(args[argindex]);
+                props.setProperty("target", ttarget+"");
                 argindex++;
             } else if (args[argindex].compareTo("-load") == 0) {
-                dotransactions = false;
+                dotransactions=false;
                 argindex++;
             } else if (args[argindex].compareTo("-t") == 0) {
-                dotransactions = true;
+                dotransactions=true;
                 argindex++;
             } else if (args[argindex].compareTo("-s") == 0) {
-                status = true;
+                status=true;
                 argindex++;
             } else if (args[argindex].compareTo("-db") == 0) {
                 argindex++;
@@ -562,7 +578,7 @@ public class Client {
                     usageMessage();
                     System.exit(0);
                 }
-                props.setProperty("db", args[argindex]);
+                props.setProperty("db",args[argindex]);
                 argindex++;
             } else if (args[argindex].compareTo("-l") == 0) {
                 argindex++;
@@ -570,7 +586,7 @@ public class Client {
                     usageMessage();
                     System.exit(0);
                 }
-                label = args[argindex];
+                label=args[argindex];
                 argindex++;
             } else if (args[argindex].compareTo("-P") == 0) {
                 argindex++;
@@ -578,10 +594,10 @@ public class Client {
                     usageMessage();
                     System.exit(0);
                 }
-                String propfile = args[argindex];
+                String propfile=args[argindex];
                 argindex++;
 
-                Properties myfileprops = new Properties();
+                Properties myfileprops=new Properties();
                 try {
                     myfileprops.load(new FileInputStream(propfile));
                 } catch (IOException e) {
@@ -590,10 +606,10 @@ public class Client {
                 }
 
                 //Issue #5 - remove call to stringPropertyNames to make compilable under Java 1.5
-                for (Enumeration e = myfileprops.propertyNames(); e.hasMoreElements(); ) {
-                    String prop = (String) e.nextElement();
+                for (Enumeration<?> e = myfileprops.propertyNames(); e.hasMoreElements(); ) {
+                   String prop=(String)e.nextElement();
 
-                    fileprops.setProperty(prop, myfileprops.getProperty(prop));
+                   fileprops.setProperty(prop,myfileprops.getProperty(prop));
                 }
 
             } else if (args[argindex].compareTo("-p") == 0) {
@@ -602,19 +618,19 @@ public class Client {
                     usageMessage();
                     System.exit(0);
                 }
-                int eq = args[argindex].indexOf('=');
+                int eq=args[argindex].indexOf('=');
                 if (eq < 0) {
                     usageMessage();
                     System.exit(0);
                 }
 
-                String name = args[argindex].substring(0, eq);
-                String value = args[argindex].substring(eq + 1);
-                props.put(name, value);
+                String name=args[argindex].substring(0,eq);
+                String value=args[argindex].substring(eq+1);
+                props.put(name,value);
                 //System.out.println("["+name+"]=["+value+"]");
                 argindex++;
             } else {
-                System.out.println("Unknown option " + args[argindex]);
+                System.out.println("Unknown option "+args[argindex]);
                 usageMessage();
                 System.exit(0);
             }
@@ -635,12 +651,13 @@ public class Client {
         //overwrite file properties with properties from the command line
 
         //Issue #5 - remove call to stringPropertyNames to make compilable under Java 1.5
-        for (Enumeration e = props.propertyNames(); e.hasMoreElements(); ) {
-            String prop = (String) e.nextElement();
-            fileprops.setProperty(prop, props.getProperty(prop));
+        for (Enumeration<?> e = props.propertyNames(); e.hasMoreElements(); ) {
+           String prop=(String)e.nextElement();
+
+           fileprops.setProperty(prop,props.getProperty(prop));
         }
 
-        props = fileprops;
+        props=fileprops;
 
         if (!checkRequiredProperties(props)) {
             System.exit(0);
@@ -649,21 +666,21 @@ public class Client {
         long maxExecutionTime = Integer.parseInt(props.getProperty(MAX_EXECUTION_TIME, "0"));
 
         //get number of threads, target and db
-        threadcount = Integer.parseInt(props.getProperty("threadcount", "1"));
-        dbname = props.getProperty("db", "com.yahoo.ycsb.BasicDB");
-        target = Integer.parseInt(props.getProperty("target", "0"));
+        threadcount=Integer.parseInt(props.getProperty("threadcount","1"));
+        dbname=props.getProperty("db","com.yahoo.ycsb.BasicDB");
+        target=Integer.parseInt(props.getProperty("target","0"));
 
         //compute the target throughput
-        double targetperthreadperms = -1;
+        double targetperthreadperms=-1;
         if (target > 0) {
-            double targetperthread = ((double) target) / ((double) threadcount);
-            targetperthreadperms = targetperthread / 1000.0;
+            double targetperthread=((double)target)/((double)threadcount);
+            targetperthreadperms=targetperthread/1000.0;
         }
 
         System.out.println("YCSB Client 0.1");
         System.out.print("Command line:");
         for (int i = 0; i < args.length; i++) {
-            System.out.print(" " + args[i]);
+            System.out.print(" "+args[i]);
         }
         System.out.println();
         System.err.println("Loading workload...");
@@ -690,11 +707,11 @@ public class Client {
         //load the workload
         ClassLoader classLoader = Client.class.getClassLoader();
 
-        Workload workload = null;
+        Workload workload=null;
 
         try {
-            Class workloadclass = classLoader.loadClass(props.getProperty(WORKLOAD_PROPERTY, "com.yahoo.ycsb.workloads.CoreWorkload"));
-            workload = (Workload) workloadclass.newInstance();
+            Class<?> workloadclass = classLoader.loadClass(props.getProperty(WORKLOAD_PROPERTY, "com.yahoo.ycsb.workloads.CoreWorkload"));
+            workload=(Workload)workloadclass.newInstance();
         } catch (Exception e) {
             e.printStackTrace();
             e.printStackTrace(System.out);
@@ -717,54 +734,22 @@ public class Client {
 
         int opcount;
         if (dotransactions) {
-            opcount = Integer.parseInt(props.getProperty(OPERATION_COUNT_PROPERTY, "0"));
+            opcount=Integer.parseInt(props.getProperty(OPERATION_COUNT_PROPERTY,"0"));
         } else {
             if (props.containsKey(INSERT_COUNT_PROPERTY)) {
-                opcount = Integer.parseInt(props.getProperty(INSERT_COUNT_PROPERTY, "0"));
+                opcount=Integer.parseInt(props.getProperty(INSERT_COUNT_PROPERTY,"0"));
             } else {
-                opcount = Integer.parseInt(props.getProperty(RECORD_COUNT_PROPERTY, "0"));
+                opcount = Integer.parseInt(props.getProperty(RECORD_COUNT_PROPERTY, RECORD_COUNT_DEFAULT));
             }
         }
+        Vector<Thread> threads=new Vector<Thread>();
 
-        int warmupopcount = Integer.parseInt(props.getProperty(WARMUP_OPERATION_COUNT_PROPERTY, "0"));
-        int warmupexectime = Integer.parseInt(props.getProperty(WARMUP_EXECUTION_TIME, "0"));
-
-        if (dotransactions) {
-            Vector<Thread> warmupThreads = new Vector<Thread>();
-            for (int threadid = 0; threadid < threadcount; threadid++) {
-                DB db = null;
-                try {
-                    db = DBFactory.rawDB(dbname, props);
-                } catch (UnknownDBException e) {
-                    System.out.println("Unknown DB " + dbname);
-                    System.exit(0);
-                }
-                Thread t = new WarmupThread(db, dotransactions, workload, props,
-                        warmupopcount / threadcount, targetperthreadperms, warmupexectime);
-                warmupThreads.add(t);
-            }
-
-            for (Thread t : warmupThreads) {
-                t.start();
-            }
-
-            for (Thread t : warmupThreads) {
-                try {
-                    t.join();
-                } catch (InterruptedException e) {
-
-                }
-            }
-        }
-
-        Vector<Thread> threads = new Vector<Thread>();
-
-        for (int threadid = 0; threadid < threadcount; threadid++) {
-            DB db = null;
+        for (int threadid=0; threadid<threadcount; threadid++) {
+            DB db=null;
             try {
                 db = DBFactory.wrappedDB(dbname, props);
             } catch (UnknownDBException e) {
-                System.out.println("Unknown DB " + dbname);
+                System.out.println("Unknown DB "+dbname);
                 System.exit(0);
             }
 
@@ -775,14 +760,15 @@ public class Client {
             threads.add(t);
         }
 
-        StatusThread statusthread = null;
+        StatusThread statusthread=null;
 
         if (status) {
-            boolean standardstatus = false;
-            if (props.getProperty("measurementtype", "").compareTo("timeseries") == 0) {
-                standardstatus = true;
+            boolean standardstatus=false;
+            if (props.getProperty(Measurements.MEASUREMENT_TYPE,"").compareTo("timeseries")==0) {
+                standardstatus=true;
             }
-            statusthread = new StatusThread(threads, label, standardstatus);
+            int statusIntervalSeconds = Integer.parseInt(props.getProperty("status.interval","10"));
+            statusthread = new StatusThread(threads,label,standardstatus,statusIntervalSeconds);
             statusthread.start();
         }
 
@@ -809,25 +795,19 @@ public class Client {
         Thread terminator = null;
 
         if (maxExecutionTime > 0) {
-            terminator = new TerminatorThread(maxExecutionTime, threads, workload);
-            terminator.start();
+          terminator = new TerminatorThread(maxExecutionTime, threads, workload);
+          terminator.start();
         }
-
-        long st = System.currentTimeMillis();
-        int opsDone = 0;
 
         for (Thread t : threads) {
             try {
                 t.join();
-                opsDone += ((ClientThread) t).getOpsDone();
             } catch (InterruptedException e) {
             }
         }
 
-        long en = System.currentTimeMillis();
-
         if (terminator != null && !terminator.isInterrupted()) {
-            terminator.interrupt();
+          terminator.interrupt();
         }
 
         if (status) {
@@ -846,19 +826,7 @@ public class Client {
         } catch (WorkloadException e) {
             e.printStackTrace();
             e.printStackTrace(System.out);
-            System.exit(0);
         }
-
-        //try
-        //{
-        //	exportMeasurements(exporter, opsDone, en - st);
-        //} catch (IOException e)
-        //{
-        //	System.err.println("Could not export measurements, error: " + e.getMessage());
-        //	e.printStackTrace();
-        //	System.exit(-1);
-        //}
-
         System.exit(0);
     }
 }

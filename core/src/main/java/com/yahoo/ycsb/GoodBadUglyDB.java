@@ -15,85 +15,72 @@
  * LICENSE file.                                                                                                                                                                   
  */
 
-package com.yahoo.ycsb.measurements;
+package com.yahoo.ycsb;
 
-import java.io.IOException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import static java.util.concurrent.TimeUnit.MICROSECONDS;
 
-import com.yahoo.ycsb.measurements.exporter.MeasurementsExporter;
+import java.util.Random;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * A single measured metric (such as READ LATENCY)
+ * Basic DB that just prints out the requested operations, instead of doing them against a database.
  */
-public abstract class OneMeasurement {
+public class GoodBadUglyDB extends BasicDB {
+    public static final String SIMULATE_DELAY = "gbudb.delays";
+    public static final String SIMULATE_DELAY_DEFAULT = "200,1000,10000,50000,100000";
+    long delays[];
+    static ReadWriteLock DB_ACCESS = new ReentrantReadWriteLock();
 
-	private String _name;
-	private final AtomicInteger retrycounts = new AtomicInteger(0);
-    
-    private final ConcurrentMap<Integer, AtomicInteger> returncodes = new ConcurrentHashMap<Integer, AtomicInteger>();
-
-	public String getName() {
-		return _name;
-	}
-
-	/**
-	 * @param _name
-	 */
-	public OneMeasurement(String _name) {
-        this._name = _name;
+    public GoodBadUglyDB() {
+        delays = new long[] { 200, 1000, 10000, 50000, 200000 };
     }
 
-	public final void reportReturnCode(int code) {
-		AtomicInteger count = returncodes.get(code);
-		if (count == null) {
-			count = new AtomicInteger();
-			AtomicInteger oldCount = returncodes.putIfAbsent(code, count);
-			if (oldCount != null) {
-				count = oldCount;
-			}
-		}
-		count.incrementAndGet();
-	}
-
-	public void reportReturnCodes(MeasurementsExporter exporter)
-			throws IOException {
-		for (Integer I : returncodes.keySet()) {
-			exporter.write(getName(), "Return=" + I, returncodes.get(I).get());
-		}
-	}
-    public final void reportRetryCount(int count) {
-        retrycounts.addAndGet(count);
+    protected void delay() {
+        final Random random = Utils.random();
+        double p = random.nextDouble();
+        int mod;
+        if (p < 0.9) {
+            mod = 0;
+        } else if (p < 0.99) {
+            mod = 1;
+        } else if (p < 0.9999) {
+            mod = 2;
+        } else {
+            mod = 3;
+        }
+        // this will make mod 3 pauses global
+        Lock lock = mod == 3 ? DB_ACCESS.writeLock() : DB_ACCESS.readLock();
+        if (mod == 3) {
+            System.out.println("OUCH");
+        }
+        lock.lock();
+        try {
+            final long baseDelayNs = MICROSECONDS.toNanos(delays[mod]);
+            final int delayRangeNs = (int) (MICROSECONDS.toNanos(delays[mod+1]) - baseDelayNs);
+            final long delayNs = baseDelayNs + random.nextInt(delayRangeNs);
+            long now = System.nanoTime();
+            final long deadline = now + delayNs;
+            do {
+                LockSupport.parkNanos(deadline - now);
+            } while ((now = System.nanoTime()) < deadline && !Thread.interrupted());
+        }
+        finally {
+            lock.unlock();
+        }
+        
     }
-    public int getRetries() {
-		return retrycounts.get();
-	}
-
-    public abstract void measure(int latency);
 
     /**
-     * This is called periodically by the status thread.
-     * 
-     * @return summary status for the period since last called
+     * Initialize any state for this DB. Called once per DB instance; there is one DB instance per client thread.
      */
-    public abstract String getSummary();
-
-    /**
-     * Export the current measurements to a suitable format. This method
-     * is called periodically by the ExportMeasurementsThread.
-     *
-     * @param exporter Exporter representing the type of format to write to.
-     * @throws IOException Thrown if the export failed.
-     */
-    public abstract void exportMeasurementsPart(MeasurementsExporter exporter) throws IOException;
-    
-    /**
-     * Export the current measurements to a suitable format. This method
-     * is called periodically by the ExportMeasurementsThread shutdown hook.
-     *
-     * @param exporter Exporter representing the type of format to write to.
-     * @throws IOException Thrown if the export failed.
-     */
-    public abstract void exportMeasurementsFinal(MeasurementsExporter exporter) throws IOException;
+    public void init() {
+    	super.init();
+        int i=0;
+        for(String delay: getProperties().getProperty(SIMULATE_DELAY, SIMULATE_DELAY_DEFAULT).split(",")){
+            delays[i++] = Long.parseLong(delay);
+        }
+    }
 }
