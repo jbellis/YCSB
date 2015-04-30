@@ -99,36 +99,32 @@ public class CouchbaseClient extends DB {
 
     @Override
     public int readOne(String table, String key, String field, Map<String, ByteIterator> result) {
-        try {
-            String id = generateId(table, key);
-            JsonDocument foundDocument = bucket.get(id);
-            if (foundDocument == null) {
-                return ERROR;
-            }
-
-            JsonObject content = foundDocument.content();
-            result.put(field, new ByteArrayByteIterator(content.getString(field).getBytes()));
-            return OK;
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            System.out.println("Error reading key: " + key);
-            return ERROR;
-        }
+        return read(table, key, field, result);
     }
 
     @Override
     public int readAll(String table, String key, Map<String, ByteIterator> result) {
+        return read(table, key, null, result);
+    }
+
+    private int read(String table, String key, String field, Map<String, ByteIterator> result) {
         try {
             String id = generateId(table, key);
             JsonDocument foundDocument = bucket.get(id);
             if (foundDocument == null) {
+                System.out.println("Key not found, please check loaded data: " + key);
                 return ERROR;
             }
 
             JsonObject content = foundDocument.content();
-            for (String name : content.getNames()) {
-                result.put(name, new ByteArrayByteIterator(content.getString(name).getBytes()));
+            if (field == null) {
+                for (String name : content.getNames()) {
+                    result.put(name, new ByteArrayByteIterator(content.getString(name).getBytes()));
+                }
+            } else {
+                result.put(field, new ByteArrayByteIterator(content.getString(field).getBytes()));
             }
+
             return OK;
         } catch (Exception ex) {
             ex.printStackTrace();
