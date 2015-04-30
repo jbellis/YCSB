@@ -1,14 +1,23 @@
 Yahoo! Cloud System Benchmark (YCSB)
 ====================================
-This organiztion and fork of YCSB is setup to allow interested parties to keep the YCSB benchmark updated as it is observed that the original repository (https://github.com/brianfrankcooper/YCSB) is not actively maintained. The starting point for this repository is a fork created by jbellis, which contains many fixes to the original.
-Vendors who wish to join the organization should submit an issue, to keep noise to a minimum it is suggested that one developer per vendor is picked as representative.
+This organization and fork of YCSB is setup to allow interested parties to keep the YCSB benchmark 
+updated as it is observed that the original repository (https://github.com/brianfrankcooper/YCSB) 
+is not actively maintained. 
+
+The starting point for this repository is a fork created by 
+[jbellis](https://github.com/jbellis/YCSB), which contains many fixes to the original. Vendors who 
+wish to join the organization should submit an issue, to keep noise to a minimum it is suggested 
+that one developer per vendor is picked as a representative.
 
 A note on comparing multiple systems
 ------------------------------------
 
-NoSQL systems have widely varying defaults for trading off write durability vs performance.  Make sure that you are [comparing apples to apples across all candidates](http://www.datastax.com/dev/blog/how-not-to-benchmark-cassandra-a-case-study).  The most useful common denominator is synchronously durable writes.  The following YCSB clients have been verified to perform synchronously durable writes by default:
+NoSQL systems have widely varying defaults for trading off write durability vs performance.  Make 
+sure that you are [comparing apples to apples across all candidates](http://www.datastax.com/dev/blog/how-not-to-benchmark-cassandra-a-case-study).  
+The most useful common denominator is synchronously durable writes. The following YCSB clients have 
+been verified to perform synchronously durable writes by default:
 
-- Couchbase
+- Couchbase (using `PersistTo.MASTER`)
 - HBase
 - MongoDB
 
@@ -19,18 +28,23 @@ Cassandra requires a configuration change in conf/cassandra.yaml.  Uncomment the
 
 Links
 -----
-http://research.yahoo.com/Web_Information_Management/YCSB/  
-ycsb-users@yahoogroups.com  
+- http://research.yahoo.com/Web_Information_Management/YCSB/  
+- ycsb-users@yahoogroups.com  
 
 Getting Started
 ---------------
 
-1. Download the latest release of YCSB:
+1. Clone the repository to get the latest and greatest:
 
     ```sh
-    wget https://github.com/downloads/jbellis/YCSB/ycsb-0.1.4.tar.gz
-    tar xfvz ycsb-0.1.4
-    cd ycsb-0.1.4
+    git clone https://github.com/YCSB/YCSB.git
+    cd YCSB
+    ```
+
+2. Build to generate all needed artifacts:
+
+    ```sh
+    mvn package
     ```
     
 2. Set up a database to benchmark. There is a README file under each binding 
