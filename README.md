@@ -18,8 +18,8 @@ The most useful common denominator is synchronously durable writes. The followin
 been verified to perform synchronously durable writes by default:
 
 - Couchbase (using `PersistTo.MASTER`)
-- HBase
-- MongoDB
+- HBase (using `FSYNC_WAL`)
+- MongoDB (using `WriteConcern.JOURNALED`)
 
 Cassandra requires a configuration change in conf/cassandra.yaml.  Uncomment these lines:
 
