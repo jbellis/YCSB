@@ -57,7 +57,7 @@ public class CouchbaseClient extends DB {
         String hostname = getProperties().getProperty("couchbase.hostname", DEFAULT_HOSTNAME);
         String bucketName = getProperties().getProperty("couchbase.bucket", DEFAULT_BUCKET);
         String password = getProperties().getProperty("couchbase.password", DEFAULT_PASSWORD);
-        persistTo = parsePersistTo(getProperties().getProperty("couchbase.persistTo", "0"));
+        persistTo = parsePersistTo(getProperties().getProperty("couchbase.persistTo", "master"));
         replicateTo = parseReplicateTo(getProperties().getProperty("couchbase.replicateTo", "0"));
 
         cluster = CouchbaseCluster.create(hostname);
