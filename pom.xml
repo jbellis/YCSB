@@ -68,6 +68,7 @@
     <!--<module>mapkeeper</module>-->
     <module>mongodb</module>
     <module>distribution</module>
+    <module>couchbase</module>
   </modules>
 
   <build>
