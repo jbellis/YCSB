@@ -6,7 +6,7 @@ Coordinated Omission[1] and related measurement issue:
 * Measurement starts at beginning of request rather than at intended beginning
 * Measurement is limited in scope as the histogram does not provide data on overflow values
 
-To provide a minimal correction patch the following were implemented:
+In it's current form the following changes were made:
 
 1. Replace internal histogram implementation with HdrHistogram[2]:
 HdrHistogram offers a dynamic range of measurement at a given precision and will
@@ -30,12 +30,12 @@ the -target paramaeter)
 
 This correction supports the following new options:
 
-* -p measurementtype=[histogram|hdrhistogram|hdrhistogram+histogram|timeseries] (default=histogram)
+* -p measurementtype=[histogram|hdrhistogram|hdrhistogram+histogram|timeseries] (default=hdrhistogram)
 The new measurement types are hdrhistogram and hdrhistogram+histogram. Default is still
 histogram, which is the old histogram. Ultimately we would remove the old measurement types
 and use only HdrHistogram but the old measurement is left in there for comparison sake.
 
-* -p measurement.interval=[op|intended|both] (default=op)
+* -p measurement.interval=[op|intended|both] (default=intended)
 This new option deferentiates between measured intervals and adds the intended interval(as described)
 above, and the option to record both the op and intended for comparison.
 
