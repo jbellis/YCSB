@@ -293,6 +293,8 @@ public class CoreWorkload extends Workload {
 
     boolean ignoreinserterrors;
     
+    private Measurements _measurements = Measurements.getMeasurements();
+	
     protected static IntegerGenerator getFieldLengthGenerator(Properties p) throws WorkloadException {
         IntegerGenerator fieldlengthgenerator;
         String fieldlengthdistribution = p.getProperty(FIELD_LENGTH_DISTRIBUTION_PROPERTY, FIELD_LENGTH_DISTRIBUTION_PROPERTY_DEFAULT);
@@ -335,7 +337,7 @@ public class CoreWorkload extends Workload {
         double insertproportion = Double.parseDouble(p.getProperty(INSERT_PROPORTION_PROPERTY, INSERT_PROPORTION_PROPERTY_DEFAULT));
         double scanproportion = Double.parseDouble(p.getProperty(SCAN_PROPORTION_PROPERTY, SCAN_PROPORTION_PROPERTY_DEFAULT));
         double readmodifywriteproportion = Double.parseDouble(p.getProperty(READMODIFYWRITE_PROPORTION_PROPERTY, READMODIFYWRITE_PROPORTION_PROPERTY_DEFAULT));
-        recordcount = Long.parseLong(p.getProperty(Client.RECORD_COUNT_PROPERTY));
+        recordcount = Long.parseLong(p.getProperty(Client.RECORD_COUNT_PROPERTY, Client.RECORD_COUNT_DEFAULT));
         String requestdistrib = p.getProperty(REQUEST_DISTRIBUTION_PROPERTY, REQUEST_DISTRIBUTION_PROPERTY_DEFAULT);
         int maxscanlength = Integer.parseInt(p.getProperty(MAX_SCAN_LENGTH_PROPERTY, MAX_SCAN_LENGTH_PROPERTY_DEFAULT));
         String scanlengthdistrib = p.getProperty(SCAN_LENGTH_DISTRIBUTION_PROPERTY, SCAN_LENGTH_DISTRIBUTION_PROPERTY_DEFAULT);
@@ -439,7 +441,7 @@ public class CoreWorkload extends Workload {
         //update a random field
         String fieldname = fieldnameprefix + fieldchooser.nextString();
         ByteIterator data = new RandomByteIterator(fieldlengthgenerator.nextInt());
-        return new AbstractMap.SimpleEntry(fieldname, data);
+        return new AbstractMap.SimpleEntry<String, ByteIterator>(fieldname, data);
     }
 
     /**
@@ -541,8 +543,9 @@ public class CoreWorkload extends Workload {
         long keynum = nextReadKeynum();
         String keyname = buildKeyName(keynum);
 
-        //do the transaction
-        long st = System.nanoTime();
+		//do the transaction
+		long ist=_measurements.getIntendedtartTimeNs();
+	    long st = System.nanoTime();
 
         if (!readallfields) {
             //read a random field
@@ -566,7 +569,8 @@ public class CoreWorkload extends Workload {
 
         long en = System.nanoTime();
 
-        Measurements.getMeasurements().measure("READ-MODIFY-WRITE", (int) ((en - st) / 1000));
+		_measurements .measure("READ-MODIFY-WRITE", (int)((en-st)/1000));
+		_measurements .measureIntended("READ-MODIFY-WRITE", (int)((en-ist)/1000));
     }
 
     public void doTransactionScan(DB db) {

@@ -60,14 +60,15 @@
     <module>aerospike</module>
     <module>cassandra</module>
     <module>core</module>
-    <module>couchbase-2.0</module>
     <module>hbase</module>
     <!--<module>accumulo</module>-->
     <!--<module>dynamodb</module>-->
     <module>jdbc</module>
     <module>memcached</module>
+    <!--<module>mapkeeper</module>-->
     <module>mongodb</module>
     <module>distribution</module>
+    <module>couchbase</module>
   </modules>
 
   <build>

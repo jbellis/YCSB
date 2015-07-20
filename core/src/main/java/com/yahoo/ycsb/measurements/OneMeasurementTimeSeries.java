@@ -19,9 +19,8 @@ package com.yahoo.ycsb.measurements;
 
 import java.io.IOException;
 import java.text.DecimalFormat;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Properties;
+import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -62,7 +61,6 @@ public class OneMeasurementTimeSeries extends OneMeasurement {
     private AtomicInteger sum = new AtomicInteger(0);
     private AtomicInteger operations = new AtomicInteger(0);
     private AtomicLong totallatency = new AtomicLong(0);
-    private AtomicInteger retrycounts = new AtomicInteger(0);
 
     //keep a windowed version of these stats for printing status
     private AtomicInteger windowoperations = new AtomicInteger(0);
@@ -72,8 +70,6 @@ public class OneMeasurementTimeSeries extends OneMeasurement {
     private AtomicInteger max = new AtomicInteger(-1);
 
     private int first = 0;
-
-    private final ConcurrentMap<Integer, AtomicInteger> returncodes = new ConcurrentHashMap<Integer, AtomicInteger>();
 
     public OneMeasurementTimeSeries(String name, Properties props) {
         super(name);
@@ -131,28 +127,15 @@ public class OneMeasurementTimeSeries extends OneMeasurement {
     }
 
 
-    @Override
-    public void exportMeasurements(MeasurementsExporter exporter) throws IOException {
-        checkEndOfUnit(true);
-        exportGeneralMeasurements(exporter);
-
-        for (SeriesUnit unit : _measurements) {
-            exporter.write(getName(), Long.toString(unit.time), unit.average, unit.throughput);
-        }
-    }
-
     private void exportGeneralMeasurements(MeasurementsExporter exporter) throws IOException {
         exporter.write(getName(), "Operations", operations.get());
-        exporter.write(getName(), "Retries", retrycounts.get());
+        exporter.write(getName(), "Retries", getRetries());
         exporter.write(getName(), "AverageLatency(us)", (((double) totallatency.get()) / ((double) operations.get())));
         exporter.write(getName(), "MinLatency(us)", min.get());
         exporter.write(getName(), "MaxLatency(us)", max.get());
 
         //TODO: 95th and 99th percentile latency
-
-        for (Integer I : returncodes.keySet()) {
-            exporter.write(getName(), "Return=" + I, returncodes.get(I).get());
-        }
+        reportReturnCodes(exporter);
     }
 
     @Override
@@ -170,24 +153,6 @@ public class OneMeasurementTimeSeries extends OneMeasurement {
         checkEndOfUnit(true);
         exportMeasurementsPart(exporter);
         exportGeneralMeasurements(exporter);
-    }
-
-    @Override
-    public void reportReturnCode(int code) {
-        AtomicInteger count = returncodes.get(code);
-        if (count == null) {
-            count = new AtomicInteger();
-            AtomicInteger oldCount = returncodes.putIfAbsent(code, count);
-            if (oldCount != null) {
-                count = oldCount;
-            }
-        }
-        count.incrementAndGet();
-    }
-
-    @Override
-    public void reportRetryCount(int count) {
-        retrycounts.addAndGet(count);
     }
 
     @Override

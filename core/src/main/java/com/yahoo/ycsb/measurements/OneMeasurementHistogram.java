@@ -20,8 +20,6 @@ package com.yahoo.ycsb.measurements;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
@@ -42,7 +40,6 @@ public class OneMeasurementHistogram extends OneMeasurement {
     private final AtomicIntegerArray histogram;
     private final AtomicInteger histogramoverflow = new AtomicInteger(0);
     private final AtomicInteger operations = new AtomicInteger(0);
-    private final AtomicInteger retrycounts = new AtomicInteger(0);
     private final AtomicLong totallatency = new AtomicLong(0);
 
     //keep a windowed version of these stats for printing status
@@ -51,7 +48,6 @@ public class OneMeasurementHistogram extends OneMeasurement {
 
     private final AtomicInteger min = new AtomicInteger(-1);
     private final AtomicInteger max = new AtomicInteger(-1);
-    private final ConcurrentMap<Integer, AtomicInteger> returncodes = new ConcurrentHashMap<Integer, AtomicInteger>();
 
     public OneMeasurementHistogram(String name, Properties props) {
         super(name);
@@ -59,25 +55,7 @@ public class OneMeasurementHistogram extends OneMeasurement {
         histogram = new AtomicIntegerArray(buckets.get());
     }
 
-    /* (non-Javadoc)
-      * @see com.yahoo.ycsb.OneMeasurement#reportReturnCode(int)
-      */
-    public void reportReturnCode(int code) {
-        AtomicInteger count = returncodes.get(code);
-        if (count == null) {
-            count = new AtomicInteger();
-            AtomicInteger oldCount = returncodes.putIfAbsent(code, count);
-            if (oldCount != null) {
-                count = oldCount;
-            }
-        }
-        count.incrementAndGet();
-    }
 
-    @Override
-    public void reportRetryCount(int count) {
-        retrycounts.addAndGet(count);
-    }
 
 
     /* (non-Javadoc)
@@ -113,19 +91,13 @@ public class OneMeasurementHistogram extends OneMeasurement {
 
 
     @Override
-    public void exportMeasurements(MeasurementsExporter exporter) throws IOException {
-        exportGeneralMeasurements(exporter);
-        exportMeasurementsPart(exporter);
-    }
-
-    @Override
     public void exportMeasurementsPart(MeasurementsExporter exporter) throws IOException {
         //do nothing for this type of measurements
     }
 
     private void exportGeneralMeasurements(MeasurementsExporter exporter) throws IOException {
         exporter.write(getName(), "Operations", operations.get());
-        exporter.write(getName(), "Retries", retrycounts.get());
+        exporter.write(getName(), "Retries", getRetries());
         exporter.write(getName(), "AverageLatency(us)", (((double) totallatency.get()) / ((double) operations.get())));
         exporter.write(getName(), "MinLatency(us)", min.get());
         exporter.write(getName(), "MaxLatency(us)", max.get());
@@ -144,12 +116,10 @@ public class OneMeasurementHistogram extends OneMeasurement {
             }
         }
 
-        for (Integer I : returncodes.keySet()) {
-            exporter.write(getName(), "Return=" + I, returncodes.get(I).get());
-        }
+        reportReturnCodes(exporter);
     }
 
-    @Override
+	@Override
     public void exportMeasurementsFinal(MeasurementsExporter exporter) throws IOException {
         for (int i = 0; i < buckets.get(); i++) {
             int count = histogram.get(i);

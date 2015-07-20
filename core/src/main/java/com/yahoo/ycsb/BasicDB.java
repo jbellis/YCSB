@@ -18,6 +18,8 @@
 package com.yahoo.ycsb;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 
 /**
@@ -28,11 +30,15 @@ public class BasicDB extends DB
 	public static final String VERBOSE="basicdb.verbose";
 	public static final String VERBOSE_DEFAULT="true";
 	
-	public static final String SIMULATE_DELAY="basicdb.simulatedelay";
-	public static final String SIMULATE_DELAY_DEFAULT="0";
+    public static final String SIMULATE_DELAY="basicdb.simulatedelay";
+    public static final String SIMULATE_DELAY_DEFAULT="0";
+    
+    public static final String RANDOMIZE_DELAY="basicdb.randomizedelay";
+    public static final String RANDOMIZE_DELAY_DEFAULT="true";
+    
 	
-	
-	boolean verbose;
+    boolean verbose;
+    boolean randomizedelay;
 	int todelay;
 
 	public BasicDB()
@@ -41,18 +47,26 @@ public class BasicDB extends DB
 	}
 
 	
-	void delay()
+	protected void delay()
 	{
 		if (todelay>0)
 		{
-			try
-			{
-				Thread.sleep((long)Utils.random().nextInt(todelay));
-			}
-			catch (InterruptedException e)
-			{
-				//do nothing
-			}
+		    long delayNs;
+		    if (randomizedelay) {
+		        delayNs = TimeUnit.MILLISECONDS.toNanos(Utils.random().nextInt(todelay));
+		        if (delayNs == 0) {
+		            return;
+		        }
+		    }
+		    else {
+		        delayNs = TimeUnit.MILLISECONDS.toNanos(todelay);
+		    }
+		    
+		    long now = System.nanoTime();
+            final long deadline = now + delayNs;
+            do {
+                LockSupport.parkNanos(deadline - now);
+            } while ((now = System.nanoTime()) < deadline && !Thread.interrupted());
 		}
 	}
 
@@ -60,19 +74,18 @@ public class BasicDB extends DB
 	 * Initialize any state for this DB.
 	 * Called once per DB instance; there is one DB instance per client thread.
 	 */
-	@SuppressWarnings("unchecked")
 	public void init()
 	{
 		verbose=Boolean.parseBoolean(getProperties().getProperty(VERBOSE, VERBOSE_DEFAULT));
 		todelay=Integer.parseInt(getProperties().getProperty(SIMULATE_DELAY, SIMULATE_DELAY_DEFAULT));
-		
+		randomizedelay=Boolean.parseBoolean(getProperties().getProperty(RANDOMIZE_DELAY, RANDOMIZE_DELAY_DEFAULT));
 		if (verbose)
 		{
 			System.out.println("***************** properties *****************");
 			Properties p=getProperties();
 			if (p!=null)
 			{
-				for (Enumeration e=p.propertyNames(); e.hasMoreElements(); )
+				for (Enumeration<?> e=p.propertyNames(); e.hasMoreElements(); )
 				{
 					String k=(String)e.nextElement();
 					System.out.println("\""+k+"\"=\""+p.getProperty(k)+"\"");
@@ -91,11 +104,11 @@ public class BasicDB extends DB
 	 * @return Zero on success, a non-zero error code on error
 	 */
 	public int readAll(String table, String key, Map<String,ByteIterator> result) {
-        delay();
+		delay();
 
-        if (verbose)
-        {
-            System.out.print("READ "+table+" "+key+" [ ");
+		if (verbose)
+		{
+			System.out.print("READ "+table+" "+key+" [ ");
             System.out.print("<all fields>");
             System.out.println("]");
         }
@@ -113,17 +126,17 @@ public class BasicDB extends DB
      * @return Zero on success, a non-zero error code on error
      */
     public int readOne(String table, String key, String field, Map<String,ByteIterator> result)
-    {
+	{
         delay();
 
         if (verbose)
-        {
+				{
             System.out.print(field+" ");
             System.out.println("]");
 		}
 
         return 0;
-    }
+	}
 
 	/**
 	 * Perform a range scan for a set of records in the database. Each field/value pair from the result will be stored in a HashMap.
@@ -139,32 +152,32 @@ public class BasicDB extends DB
         delay();
 
         if (verbose)
-        {
+		{
             System.out.print("SCAN "+table+" "+startkey+" "+recordcount+" [ ");
-            System.out.print("<all fields>");
-            System.out.println("]");
-        }
+			System.out.print("<all fields>");
+			System.out.println("]");
+		}
 
-        return 0;
-    }
-
-    /**
-     * Perform a range scan for a set of records in the database. Each field/value pair from the result will be stored in a HashMap.
-     *
-     * @param table The name of the table
-     * @param startkey The record key of the first record to read.
-     * @param recordcount The number of records to read
+		return 0;
+	}
+	
+	/**
+	 * Perform a range scan for a set of records in the database. Each field/value pair from the result will be stored in a HashMap.
+	 *
+	 * @param table The name of the table
+	 * @param startkey The record key of the first record to read.
+	 * @param recordcount The number of records to read
      * @param field The field to read
      * @param result A List of Maps, where each Map is a set field/value pairs for one record
      * @return Zero on success, a non-zero error code on error.  See this class's description for a discussion of error codes.
-     */
+	 */
     public int scanOne(String table, String startkey, int recordcount, String field, List<Map<String, ByteIterator>> result)
-    {
-        delay();
+	{
+		delay();
 
-        if (verbose)
-        {
-            System.out.print("SCAN "+table+" "+startkey+" "+recordcount+" [ ");
+		if (verbose)
+		{
+			System.out.print("SCAN "+table+" "+startkey+" "+recordcount+" [ ");
             System.out.print(field+" ");
             System.out.println("]");
         }
@@ -196,7 +209,7 @@ public class BasicDB extends DB
 		return 0;
 	}
 
-    /**
+	/**
      * Update a record in the database. Any field/value pairs in the specified values Map will be written into the record with the specified
      * record key, overwriting any existing values with the same field name.
      *
@@ -215,16 +228,16 @@ public class BasicDB extends DB
 
     /**
      * Update a record in the database. Any field/value pairs in the specified values Map will be written into the record with the specified
-     * record key, overwriting any existing values with the same field name.
-     *
-     * @param table The name of the table
-     * @param key The record key of the record to write.
+	 * record key, overwriting any existing values with the same field name.
+	 *
+	 * @param table The name of the table
+	 * @param key The record key of the record to write.
      * @param values A Map of field/value pairs to update in the record
      * @return Zero on success, a non-zero error code on error.  See this class's description for a discussion of error codes.
-     */
+	 */
     @Override
     public int updateAll(String table, String key, Map<String,ByteIterator> values)
-    {
+	{
         return update(table, key, values);
     }
 
@@ -252,10 +265,10 @@ public class BasicDB extends DB
 	 * record key.
 	 *
 	 *
-     * @param table The name of the table
-     * @param key The record key of the record to insert.
+	 * @param table The name of the table
+	 * @param key The record key of the record to insert.
      * @param values A Map of field/value pairs to insert in the record
-     * @return Zero on success, a non-zero error code on error
+	 * @return Zero on success, a non-zero error code on error
 	 */
 	public int insert(String table, String key, Map<String, ByteIterator> values)
 	{
@@ -297,35 +310,4 @@ public class BasicDB extends DB
 
 		return 0;
 	}
-
-	/**
-	 * Short test of BasicDB
-	 */
-	/*
-	public static void main(String[] args)
-	{
-		BasicDB bdb=new BasicDB();
-
-		Properties p=new Properties();
-		p.setProperty("Sky","Blue");
-		p.setProperty("Ocean","Wet");
-
-		bdb.setProperties(p);
-
-		bdb.init();
-
-		HashMap<String,String> fields=new HashMap<String,String>();
-		fields.put("A","X");
-		fields.put("B","Y");
-
-		bdb.read("table","key",null,null);
-		bdb.insert("table","key",fields);
-
-		fields=new HashMap<String,String>();
-		fields.put("C","Z");
-
-		bdb.update("table","key",fields);
-
-		bdb.delete("table","key");
-	}*/
 }

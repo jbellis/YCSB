@@ -91,12 +91,17 @@ public class DBWrapper extends DB {
      * Called once per DB instance; there is one DB instance per client thread.
      */
     public void cleanup() throws DBException {
+        long ist=_measurements.getIntendedtartTimeNs();
         long st=System.nanoTime();
         _db.cleanup();
         long en=System.nanoTime();
-        _measurements.measure("CLEANUP", (int)((en-st)/1000));
+        measure("CLEANUP",ist, st, en);
     }
-
+    
+    private void measure(String op, long intendedStartTimeNanos, long startTimeNanos, long endTimeNanos) {
+        _measurements.measure(op, (int)((endTimeNanos-startTimeNanos)/1000));
+	    _measurements.measureIntended(op, (int)((endTimeNanos-intendedStartTimeNanos)/1000));
+    }
     /**
      * Read a record from the database. Each field/value pair from the result will be stored in a Map.
      *
@@ -279,7 +284,8 @@ public class DBWrapper extends DB {
     }
 
     private int operation(DBOperation op) {
-        long st = System.nanoTime();
+	    long ist=_measurements.getIntendedtartTimeNs();
+	    long st = System.nanoTime();
         int res = op.go();
         int retryCount;
         for (retryCount = 0; res != 0 && retryCount < op.maxRetries(); retryCount++) {
@@ -289,7 +295,7 @@ public class DBWrapper extends DB {
             res = op.go();
         }
         long en = System.nanoTime();
-        _measurements.measure(op.name(), (int) ((en - st) / 1000));
+        measure(op.name(),ist, st, en);
         _measurements.reportRetryCount(op.name(), retryCount);
         _measurements.reportReturnCode(op.name(), res);
         return res;
